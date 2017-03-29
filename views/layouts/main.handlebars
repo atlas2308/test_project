@@ -3,17 +3,18 @@
     <head>
         <meta charset="utf-8">
         <title>Meadowlark Travel</title>
-
+        {{{_sections.head}}}
         {{#if showTests}}
             <link rel="stylesheet" href="/vendor/mocha.css">
         {{/if}}
-        <script src="//code.jquery.com/jquery-2.0.2.min.js"></script>
+        <script src="http://code.jquery.com/jquery-2.0.2.min.js"></script>
     </head>
     <body>
         <header><a href="/"><img src="/img/logo.png" alt="Meadowlark Travel Logo"></a></header>
 
         {{{body}}}
-
+<!--        from chapter 7 example-->
+        {{{_sections.jquery}}}
         {{#if showTests}}
             <div id="mocha"></div>
             <script src="/vendor/mocha.js"></script>
@@ -33,5 +34,12 @@
             <script>mocha.run();</script>
         {{/if}}
 
+
+
     </body>
+    <footer>
+        <br>
+        <br>
+        <span style="text-size: smaller">Copyright year:{{copyrightYear}}</span>
+    </footer>
 </html>
