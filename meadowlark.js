@@ -61,9 +61,9 @@ var handlebars = require('express-handlebars').create({
     helpers: {
         copyrightYear: copyrightYear.getCurYear(),
         section: function(name, options){
-                if(!this._sections) this._sections = {};
-                this._sections[name] = options.fn(this);
-                return null;
+            if(!this._sections) this._sections = {};
+            this._sections[name] = options.fn(this);
+            return null;
         }
     }
 });
@@ -83,7 +83,7 @@ app.set('port', process.env.PORT || 3000);
 app.set('ip', process.env.IP || 'localhost');
 
 app.use(express.static(__dirname + '/public'));
-
+app.use(require('body-parser').urlencoded({ extended: true }));
 app.use(function (req, res, next) {
     res.locals.showTests = app.get('env') !== 'production' &&
         req.query.test === '1';
@@ -173,6 +173,19 @@ app.get('/tours/request-group-rate', function (req, res) {
 
 app.get('/api/tours', function(req, res){
     res.json(tours);
+});
+
+// chapter 7 client side handlebars - pg 83+
+app.get('/nursery-rhyme', function(req, res){
+    res.render('nursery-rhyme');
+});
+app.get('/data/nursery-rhyme', function(req, res){
+    res.json({
+        animal: 'honey badger',
+        bodyPart: 'tail',
+        adjective: 'ferocious',
+        noun: 'heck'
+    });
 });
 
 /*app.get('/api/tours', function(req, res){
