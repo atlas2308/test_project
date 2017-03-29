@@ -7,6 +7,8 @@ var bodyParser = require('body-parser');
 
 // Custom scripts
 var fortune = require('./lib/fortune.js');
+var moment = require('moment-timezone');
+
 // globals
 function getWeatherData(){
     return {
