@@ -7,7 +7,8 @@ var bodyParser = require('body-parser');
 
 // Custom scripts
 var fortune = require('./lib/fortune.js');
-var moment = require('moment-timezone');
+// var moment = require('moment-timezone');
+var credentials = require('./credentials.js');
 
 // globals
 function getWeatherData(){
@@ -44,11 +45,12 @@ function getWeatherData(){
         ],
     };
 }
+
+var date = new Date();
 var dayOfWeek = require('./lib/dayOfWeek.js');
-var date = Date();
+
 
 var fortune = require('./lib/fortune.js');
-var dayOfWeek = require('./lib/dayOfWeek.js');
 var bodyParser = require('body-parser');
 
 var tours = [
@@ -97,7 +99,20 @@ app.use(function(req, res, next){
     res.locals.partials.weatherContext = getWeatherData();
     next();
 });
-
+// ch.9 stuff
+app.use(require('cookie-parser')(credentials.cookieSecret));
+app.use(require('express-session')({
+    resave: false,
+    saveUninitialized: false,
+    secret: credentials.cookieSecret
+}));
+app.use(function(req, res, next){
+    // if there's a flash message, transfer
+    // it to the context, then clear it
+    res.locals.flash = req.session.flash;
+    delete req.session.flash;
+    next();
+});
 
 // Health check
 app.get('/health', function (req, res) {
@@ -107,6 +122,12 @@ app.get('/health', function (req, res) {
 // from CH.7
 app.get('/jquery-test', function (req, res){
     res.render('jquery-test');
+});
+// from CH8 ex. 8-1
+app.get('/newsletter', function(req, res){
+    // we will learn about CSRF later...for now, we just
+    // provide a dummy value
+    res.render('newsletter', { csrf: 'CSRF token goes here' });
 });
 
 // Display header info
@@ -120,13 +141,26 @@ app.get('/headers', function (req, res) {
 });
 
 // ##Routes
+
+// monster and signed_monster from ch. 9
 app.get('/', function (req, res) {
+    res.cookie('monster', 'nom nom');
+    res.cookie('signed_monster', 'nom nom', { signed: true });
+
     res.render('home', {
         dayOfWeek: dayOfWeek.getDayOfWeek()
     });
 });
 
+// monster and signed_monster from ch. 9
 app.get('/about', function (req, res) {
+
+    var monster = req.cookies.monster;
+    var signedMonster = req.signedCookies.signed_monster;
+
+    console.log('Monster: ' + monster);
+    console.log('signed Monster: ' + signedMonster);
+
     res.render('about', {
         fortune: fortune.getFortune(),
         pageTestScript: '/qa/tests-about.js'
@@ -177,6 +211,16 @@ app.get('/api/tours', function(req, res){
     res.json(tours);
 });
 
+app.get('/newsletter', function(req, res){
+    res.render('newsletter');
+});
+
+app.get('/newsletter/archive', function(req, res){
+    res.render("newsletter/archive");
+});
+
+
+
 // chapter 7 client side handlebars - pg 83+
 app.get('/nursery-rhyme', function(req, res){
     res.render('nursery-rhyme');
@@ -189,6 +233,7 @@ app.get('/data/nursery-rhyme', function(req, res){
         noun: 'heck'
     });
 });
+
 
 /*app.get('/api/tours', function(req, res){
     var toursXml = '<?xml version="1.0"?><tours>' +
@@ -217,6 +262,63 @@ app.get('/data/nursery-rhyme', function(req, res){
     }
                });
 });*/
+
+// from CH8  ex. 8-1
+app.post('/process', function(req, res){
+    console.log('Form (from querystring): ' + req.query.form);
+    console.log('CSRF token (from hidden form field): ' + req.body._csrf);
+    console.log('Name (from visible form field): ' + req.body.name);
+    console.log('Email (from visible form field): ' + req.body.email);
+    res.redirect(303, '/thank-you');
+});
+
+// from ch.9 pg 108
+// slightly modified version of the official W3C HTML5 email regex:
+// https://html.spec.whatwg.org/multipage/forms.html#valid-e-mail-address
+function NewsletterSignup() {};
+NewsletterSignup.prototype.save = function (cb) {
+    cb();
+}
+
+var VALID_EMAIL_REGEX = new RegExp('^[a-zA-Z0-9.!#$%&\'*+\/=?^_`{|}~-]+@' +
+                                   '[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?' +
+                                   '(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$');
+
+app.post('/newsletter', function(req, res){
+    var name = req.body.name || '', email = req.body.email || '';
+    // input validation
+    if(!email.match(VALID_EMAIL_REGEX)) {
+        if(req.xhr) return res.json({ error: 'Invalid name email address.' });
+        req.session.flash = {
+            type: 'danger',
+            intro: 'Validation error!',
+            message: 'The email address you entered was not valid.'
+        };
+        return res.redirect(303, '/newsletter/archive');
+    }
+    // NewsletterSignup is an example of an object you might create;
+    // since every implementation will vary, it is up to you to write these
+    // project-specific interfaces. This simply shows how a typical Express
+    // implementation might look in your project.
+    new NewsletterSignup({ name: name, email: email }).save(function(err){
+        if(err) {
+            if(req.xhr) return res.json({ error: 'Database error.' });
+            req.session.flash = {
+                type: 'danger',
+                intro: 'Database error!',
+                message: 'There was a database error; please try again later.'
+            }
+            return res.redirect(303, '/newsletter/archive');
+        }
+        if(req.xhr) return res.json({ success: true });
+        req.session.flash = {
+            type: 'success',
+            intro: 'Thank you!',
+            message: 'You have now been signed up for the newsletter.'
+        };
+        return res.redirect(303, '/newsletter/archive');
+    });
+});
 
 
 app.post('/process-contact', urlEncodedParser, function(req, res){
