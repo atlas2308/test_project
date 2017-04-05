@@ -9,6 +9,15 @@ var bodyParser = require('body-parser');
 var fortune = require('./lib/fortune.js');
 // var moment = require('moment-timezone');
 var credentials = require('./credentials.js');
+// from ch13
+var mongoose = require('mongoose');
+var Vacation = require('./models/vacation.js');
+var VacationInSeasonListener = require('./models/vacationInSeasonListener.js');
+// var vacationData = require('./lib/vacationData.js');
+var MongoSessionStore = require('session-mongoose')(require('connect'));
+var sessionStore = new MongoSessionStore({ url:
+                                          credentials.mongo[app.get('env')].connectionString });
+
 
 // globals
 function getWeatherData(){
@@ -45,6 +54,53 @@ function getWeatherData(){
         ],
     };
 }
+
+Vacation.find(function(err, vacations){
+    if(err) return cosole.error(err);
+    if(vacations.length) return;
+    new Vacation({
+        name: 'Hood River Day Trip',
+        slug: 'hood-river-day-trip',
+        category: 'Day Trip',
+        sku: 'HR199',
+        description: 'Spend a day sailing on the Columbia and ' +
+        'enjoying craft beers in Hood River!',
+        priceInCents: 9995,
+        tags: ['day trip', 'hood river', 'sailing', 'windsurfing', 'breweries'],
+        inSeason: true,
+        maximumGuests: 16,
+        available: true,
+        packagesSold: 0
+    }).save();
+    new Vacation({
+        name: 'Oregon Coast Getaway',
+        slug: 'oregon-coast-getaway',
+        category: 'Weekend Getaway',
+        sku: 'OC39',
+        description: 'Enjoy the ocean air and quaint coastal towns!',
+        priceInCents: 269995,
+        tags: ['weekend getaway', 'oregon coast', 'beachcombing'],
+        inSeason: false,
+        maximumGuests: 8,
+        available: true,
+        packagesSold: 0
+    }).save();
+    new Vacation({
+        name: 'Rock Climbing in Bend',
+        slug: 'rock-climbing-in-bend',
+        category: 'Adventure',
+        sku: 'B99',
+        description: 'Experience the thrill of climbing in the high desert.',
+        priceInCents: 289995,
+        tags: ['weekend getaway', 'bend', 'high desert', 'rock climbing'],
+        inSeason: true,
+        requiresWaiver: true,
+        maximumGuests: 4,
+        available: false,
+        packagesSold: 0,
+        notes: 'The tour guide is currently recovering from a skiing accident.'
+    }).save();
+});
 
 var date = new Date();
 var dayOfWeek = require('./lib/dayOfWeek.js');
@@ -104,7 +160,8 @@ app.use(require('cookie-parser')(credentials.cookieSecret));
 app.use(require('express-session')({
     resave: false,
     saveUninitialized: false,
-    secret: credentials.cookieSecret
+    secret: credentials.cookieSecret,
+    store: sessionStore
 }));
 app.use(function(req, res, next){
     // if there's a flash message, transfer
@@ -113,6 +170,9 @@ app.use(function(req, res, next){
     delete req.session.flash;
     next();
 });
+
+// ch13 - pg 156
+
 
 // Health check
 app.get('/health', function (req, res) {
@@ -166,6 +226,83 @@ app.get('/about', function (req, res) {
         pageTestScript: '/qa/tests-about.js'
     });
 });
+
+// ch 13 pg 153-154
+// see companion repository for /cart/add route....
+app.get('/vacations', function(req, res){
+    Vacation.find({ available: true }, function(err, vacations){
+        var currency = req.session.currency || 'CDN';
+        var context = {
+            vacations: vacations.map(function(vacation){
+                return {
+                    sku: vacation.sku,
+                    name: vacation.name,
+                    description: vacation.description,
+                    price: vacation.getDisplayPrice(),
+                    inSeason: vacation.inSeason,
+                    price: convertFromUSD(vacation.priceInCents/100, currency),
+                    qty: vacation.qty
+                }
+            })
+        };
+        switch(currency){
+            case 'CDN': context.currencyCDN = 'selected'; break;
+            case 'USD': context.currencyUSD = 'selected'; break;
+            case 'GBP': context.currencyGBP = 'selected'; break;
+            case 'BTC': context.currencyBTC = 'selected'; break;
+        }
+        res.render('vacations', context);
+    });
+});
+
+// from ch13 pg 155+
+app.get('/set-currency/:currency', function(req,res){
+    req.session.currency = req.params.currency;
+    return res.redirect(303, '/vacations');
+});
+function convertFromUSD(value, currency){
+    switch(currency){
+        case 'USD': return value * 1;
+            break;
+        case 'GBP': return value * 0.6;
+            break;
+        case 'CDN': return parseFloat(value * 1.34).toFixed(2);
+            break;
+        case 'BTC': return value * 0.0023707918444761;
+            break;
+        default: return NaN;
+    }
+};
+
+app.get('/notify-me-when-in-season', function(req, res){
+    res.render('notify-me-when-in-season', { sku: req.query.sku });
+});
+app.post('/notify-me-when-in-season', function(req, res){
+    VacationInSeasonListener.update(
+        { email: req.body.email },
+        { $push: { skus: req.body.sku } },
+        { upsert: true },
+        function(err){
+            if(err) {
+                console.error(err.stack);
+                req.session.flash = {
+                    type: 'danger',
+                    intro: 'Ooops!',
+                    message: 'There was an error processing your request.'
+                };
+                return res.redirect(303, '/vacations');
+            }
+            req.session.flash = {
+                type: 'success',
+                intro: 'Thank you!',
+                message: 'You will be notified when this vacation is in season.'
+            };
+            return res.redirect(303, '/vacations');
+        }
+    );
+});
+
+
 
 app.get('/thank-you', function (req, res){
     res.render('thank-you');
@@ -234,6 +371,43 @@ app.get('/data/nursery-rhyme', function(req, res){
     });
 });
 
+// below is from ch.13 starts on pg. 146
+//var fs = require(fs);
+// make sure data directory exists
+/*var dataDir = __dirname + '/data';
+var vacationPhotoDir = dataDir + '/vacation-photo';
+fs.existsSync(dataDir) || fs.mkdirSync(dataDir);
+fs.existsSync(vacationPhotoDir) || fs.mkdirSync(vacationPhotoDir);
+function saveContestEntry(contestName, email, year, month, photoPath){*/
+// TODO...this will come later
+//}
+/*app.post('/contest/vacation-photo/:year/:month', function(req, res){
+    var form = new formidable.IncomingForm();
+    form.parse(req, function(err, fields, files){
+        if(err) {
+            res.session.flash = {
+                type: 'danger',
+                intro: 'Oops!',
+                message: 'There was an error processing your submission. ' +
+                'Please try again.'
+            };
+            return res.redirect(303, '/contest/vacation-photo');
+        }
+        var photo = files.photo;
+        var dir = vacationPhotoDir + '/' + Date.now();
+        var path = dir + '/' + photo.name;
+        fs.mkdirSync(dir);
+        fs.renameSync(photo.path, dir + '/' + photo.name);
+        saveContestEntry('vacation-photo', fields.email,
+                         req.params.year, req.params.month, path);
+        req.session.flash = {
+            type: 'success',
+            intro: 'Good luck!',
+            message: 'You have been entered into the contest.'
+        };
+        return res.redirect(303, '/contest/vacation-photo/entries');
+    });
+});*/
 
 /*app.get('/api/tours', function(req, res){
     var toursXml = '<?xml version="1.0"?><tours>' +
@@ -262,6 +436,25 @@ app.get('/data/nursery-rhyme', function(req, res){
     }
                });
 });*/
+
+// from pg 150
+
+var opts = {
+    server: {
+        socketOptions: { keepAlive: 1 }
+    }
+};
+switch(app.get('env')){
+    case 'development':
+        mongoose.connect(credentials.mongo.development.connectionString, opts);
+        break;
+    case 'production':
+        mongoose.connect(credentials.mongo.production.connectionString, opts);
+        break;
+    default:
+        throw new Error('Unknown execution environment: ' + app.get('env'));
+};
+
 
 // from CH8  ex. 8-1
 app.post('/process', function(req, res){

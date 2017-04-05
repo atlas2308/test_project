@@ -10,6 +10,7 @@
         {{/if}}
         <link rel="stylesheet" href="/vendor/bootstrap/css/bootstrap.min.css">
         <link rel="stylesheet" href="/vendor/bootstrap/css/bootstrap-theme.min.css">
+        <link rel="stylesheet" href="/css/main.css">
         <script src="http://code.jquery.com/jquery-2.0.2.min.js"></script>
         <script src="/vendor/moment-timezone.js"></script>
     </head>
@@ -22,7 +23,25 @@
                     <strong>{{flash.intro}}</strong> {{{flash.message}}}
             </div>
         {{/if}}
-        {{{body}}}
+        <nav>
+            <ul style="list-style-type:none">
+                <li><a href="about">About</a></li>
+                <li><a href="health">Health Check</a></li>
+                <li><a href="jquery-test">JQuery test</a></li>
+                <li><a href="newsletter">Newsletter Signup</a></li>
+                <li><a href="vacations">Vacations</a></li>
+                <li><a href="nursery-rhyme">Nursery Rhyme</a></li>
+
+                <li>Tours</li>
+                <ul style="list-style-type:none">
+                    <li><a href="tours/hood-river">Hood-River</a></li>
+                    <li><a href="tours/oregon-coast">Oregon-Coast</a></li>
+                </ul>
+            </ul>
+        </nav>
+        <main>
+            {{{body}}}
+        </main>
 <!--        from chapter 7 example-->
         {{{_sections.jquery}}}
         {{#if showTests}}
